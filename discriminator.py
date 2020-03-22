@@ -17,14 +17,14 @@ class Discriminator(nn.Module):
 
     def __init__(self, num_classes, vocab_size, emb_dim, filter_sizes, num_filters, dropout):
         super(Discriminator, self).__init__()
-        self.emb = nn.Embedding(vocab_size, emb_dim)
+        self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=1)
         self.convs = nn.ModuleList([
             nn.Conv2d(1, n, (f, emb_dim)) for (n, f) in zip(num_filters, filter_sizes)
         ])
         self.highway = nn.Linear(sum(num_filters), sum(num_filters))
         self.dropout = nn.Dropout(p=dropout)
         self.lin = nn.Linear(sum(num_filters), num_classes)
-        self.softmax = nn.LogSoftmax()
+        self.softmax = nn.LogSoftmax(dim=1)
         self.init_parameters()
 
     def forward(self, x):
@@ -39,6 +39,7 @@ class Discriminator(nn.Module):
         highway = self.highway(pred)
         pred = torch.sigmoid(highway) *  F.relu(highway) + (1. - torch.sigmoid(highway)) * pred
         pred = self.softmax(self.lin(self.dropout(pred)))
+
         return pred
 
     def init_parameters(self):

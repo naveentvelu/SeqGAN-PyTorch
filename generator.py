@@ -18,10 +18,10 @@ class Generator(nn.Module):
         self.emb_dim = emb_dim
         self.hidden_dim = hidden_dim
         self.use_cuda = use_cuda
-        self.emb = nn.Embedding(num_emb, emb_dim)
+        self.emb = nn.Embedding(num_emb, emb_dim, padding_idx=1)
         self.lstm = nn.LSTM(emb_dim, hidden_dim, batch_first=True)
         self.lin = nn.Linear(hidden_dim, num_emb)
-        self.softmax = nn.LogSoftmax()
+        self.softmax = nn.LogSoftmax(dim=1)
         self.init_params()
 
     def forward(self, x):
@@ -86,5 +86,23 @@ class Generator(nn.Module):
                 samples.append(x)
                 output, h, c = self.step(x, h, c)
                 x = output.multinomial(1)
+        output = torch.cat(samples, dim=1)
+        return output
+    
+    def conditional_sample(self, inp):
+        res = []
+        if self.use_cuda:
+            inp = inp.cuda()
+        
+        batch_size = inp.size(0)
+        seq_len = inp.size(1)
+
+        h, c = self.init_hidden(batch_size)
+        samples = []
+        lis = inp.chunk(inp.size(1), dim=1)
+        for i in range(seq_len):
+            output, h, c = self.step(lis[i], h, c)
+            x = output.multinomial(1)
+            samples.append(x)
         output = torch.cat(samples, dim=1)
         return output
