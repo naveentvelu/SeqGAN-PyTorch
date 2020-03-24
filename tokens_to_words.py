@@ -1,2 +1,0 @@
-def convert(datafile, outfile):
-    
