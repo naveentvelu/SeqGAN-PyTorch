@@ -14,13 +14,19 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
 
-from generator import Generator
+from generator_encoder_decoder import Generator
+# from generator import Generator
 from discriminator import Discriminator
 from target_lstm import TargetLSTM
 from rollout import Rollout
 from data_iter import GenDataIter, DisDataIter
 
 import helpers
+import config as cfg
+
+# Prefix for files
+prefix = 'enc_dec_'
+
 # ================== Parameter Definition =================
 
 parser = argparse.ArgumentParser(description='Training Parameter')
@@ -29,47 +35,57 @@ opt = parser.parse_args()
 print(opt)
 
 # Data File with Input, Response, Input Emotion, Response emotion, 5 persona sentences
-TRAIN_DATA_FILE = 'persona.txt'
-TEST_DATA_FILE = 'persona_test.txt'
+TRAIN_DATA_FILE = cfg.TRAIN_DATA_FILE
+TEST_DATA_FILE = cfg.TEST_DATA_FILE
 
 print("Genrating the real data samples....")
-POSITIVE_FILE = 'real.data'
-TEST_FILE = 'test.data'
+
+POSITIVE_FILE = prefix + cfg.POSITIVE_FILE
+TEST_FILE = prefix + cfg.TEST_FILE
+NEGATIVE_FILE = cfg.NEGATIVE_FILE
+EVAL_FILE = cfg.EVAL_FILE
 
 # Generate Vocab
 vocab = helpers.generate_vocab(TRAIN_DATA_FILE, TEST_DATA_FILE)
-
+VOCAB_SIZE = vocab.n_words
 # Positive Data 
 helpers.generate_data(vocab, TRAIN_DATA_FILE, POSITIVE_FILE)
 helpers.generate_data(vocab, TEST_DATA_FILE, TEST_FILE)
 
 # Basic Training Paramters
 SEED = 88
-BATCH_SIZE = 64
-TOTAL_BATCH = 200
-GENERATED_NUM = 10000
-NEGATIVE_FILE = 'gene.data'
-EVAL_FILE = 'eval.data'
-VOCAB_SIZE = vocab.n_words
-PRE_EPOCH_NUM = 120
+BATCH_SIZE = cfg.BATCH_SIZE
+TOTAL_BATCH = cfg.TOTAL_BATCH
+GENERATED_NUM = cfg.GENERATED_NUM
+PRE_EPOCH_NUM = cfg.PRE_EPOCH_NUM
 
 if opt.cuda is not None and opt.cuda >= 0:
     torch.cuda.set_device(opt.cuda)
     opt.cuda = True
 
 # Genrator Parameters
-g_emb_dim = 32
-g_hidden_dim = 32
-g_sequence_len = 20
+g_emb_dim = cfg.g_emb_dim
+g_hidden_dim = cfg.g_hidden_dim
 
 # Discriminator Parameters
-d_emb_dim = 64
-d_filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
-d_num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
+d_emb_dim = cfg.d_emb_dim
+d_filter_sizes = cfg.d_filter_sizes
+d_num_filters = cfg.d_num_filters
 
-d_dropout = 0.75
-d_num_class = 2
+d_dropout = cfg.d_dropout
+d_num_class = cfg.d_num_class
 
+def convert(datafile, outfile):
+    with open(datafile, 'r') as f:
+        lines = f.readlines()
+    with open(outfile, 'w') as fout:
+        for line in lines:
+            inp = (line.split('\t')[0]).split(' ')
+            tar = (line.split('\t')[1]).split(' ')
+
+            inp_s = ' '.join(vocab.index2word[int(s)] for s in inp)
+            tar_s = ' '.join(vocab.index2word[int(s)] for s in tar)
+            fout.write('%s\t%s\n' % (inp_s, tar_s))
 
 
 def generate_samples(model, batch_size, generated_num, input_file, output_file):
@@ -107,6 +123,7 @@ def train_epoch(model, data_iter, criterion, optimizer):
             data, target = data.cuda(), target.cuda()
         target = target.contiguous().view(-1)
         pred = model.forward(data)
+
         loss = criterion(pred, target)
         total_loss += loss.item()
         total_words += data.size(0) * data.size(1)
@@ -233,6 +250,7 @@ def main():
             zeros = torch.zeros((BATCH_SIZE, 1)).type(torch.LongTensor)
             if samples.is_cuda:
                 zeros = zeros.cuda()
+                inp = inp.cuda()
             inputs = Variable(torch.cat([zeros, inp.data], dim = 1)[:, :-1].contiguous())
             targets = Variable(samples.data).contiguous().view((-1,))
             # calculate the reward
@@ -264,6 +282,8 @@ def main():
     test_iter = GenDataIter(TEST_FILE, BATCH_SIZE)
     loss = eval_epoch(generator, test_iter, gen_criterion)
     print('Test Loss: %f' % (loss))
+
+    convert(TEST_FILE, prefix + 'OUTPUT.txt')
 
 if __name__ == '__main__':
     main()
