@@ -34,7 +34,9 @@ class Rollout(object):
         for i in range(num):
             for l in range(1, seq_len):
                 data = x[:, 0:l]
-                samples = self.own_model.sample(batch_size, seq_len, data)
+                d1 = torch.ones(batch_size, seq_len-l).type(torch.LongTensor)
+                data = torch.cat([data, d1], dim=1)
+                samples = self.own_model.conditional_sample(data)
                 pred = discriminator(samples)
                 pred = pred.cpu().data[:,1].numpy()
                 if i == 0:
